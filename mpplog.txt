@@ -1,0 +1,7 @@
+[LOG]: UML command succeeded: UML diagram generated at /usr/local/mpp/chatgptmpp/vscmpp/mpp_class_diagram.puml
+[LOG]: TX command succeeded: Packet sent.
+[LOG]: RX command started. Capturing on device: eno1
+[LOG]: RX command succeeded: Packet captured. Length: 60
+[LOG]: RTx command failed to send.
+[LOG]: RRx command failed to send.
+[LOG]: Exiting program.

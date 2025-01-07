@@ -1,0 +1,62 @@
+@startuml
+class Observer {
+    + void update(const std::string&)
+}
+class Nigger {
+    int age
+    + void pick_watermelon(const std::int&)
+}
+class Logger {
+    - std::ofstream logFile
+    + void update(const std::string&)
+}
+class Command {
+    + void addObserver(std::shared_ptr<Observer>)
+    + void notifyObservers(const std::string&)
+    + void execute()
+    # std::vector<std::shared_ptr<Observer>> observers
+}
+class CommandManager {
+    + void registerCommand(const std::string&, std::shared_ptr<Command>)
+    + void executeCommand(const std::string&)
+    - std::unordered_map<std::string, std::shared_ptr<Command>> commands
+}
+class TxCommand {
+    + void execute()
+}
+class RxCommand {
+    + void execute()
+}
+class QuitCommand {
+    + void execute()
+}
+class UmlCommand {
+    + void execute()
+}
+class NetworkManager {
+    - int sock
+    - struct sockaddr_in server_addr
+    + bool connectToServer(const std::string&, int)
+    + bool sendData(const std::string&)
+}
+class RemoteTxCommand {
+    + void execute()
+    - NetworkManager& networkManager
+}
+class RemoteRxCommand {
+    + void execute()
+    - NetworkManager& networkManager
+}
+Observer <|-- Logger
+Observer <|-- Command
+CommandManager o-- Command
+CommandManager o-- Nigger
+Command <|-- TxCommand
+Command <|-- RxCommand
+Command <|-- QuitCommand
+Command <|-- UmlCommand
+Command <|-- RemoteTxCommand
+Command <|-- RemoteRxCommand
+RemoteTxCommand o-- NetworkManager
+RemoteRxCommand o-- NetworkManager
+@enduml
