@@ -1,0 +1,91 @@
+1. Project Overview
+
+The Million Packet Project (MPP) is a C++ application designed to handle 802.3 Ethernet packets using GoF design patterns. The project is built with modularity in mind, incorporating Observer, Command, and Factory design patterns to provide flexibility and maintainability. It operates through a command-line interface (CLI) for packet transmission, reception, logging, and UML diagram generation.
+
+Key features:
+
+    Packet Transmission (Tx): Sends Ethernet packets with a custom payload using libnet.
+    Packet Reception (Rx): Captures Ethernet packets from a live network interface using libpcap.
+    Logging: Logs activities to a file and prints updates to the console.
+    UML Diagram Generation: Generates PlantUML-compatible class diagrams for visualization.
+
+2. Current State
+
+The program includes several core commands and their implementations:
+
+    TxCommand: Transmits Ethernet packets.
+    RxCommand: Captures packets from the network.
+    QuitCommand: Terminates the application.
+    UmlCommand: Generates a UML diagram of the current class structure.
+    RemoteTxCommand/RemoteRxCommand: Commands for transmitting and receiving data over a network connection.
+
+Known issues and areas for improvement:
+
+    Minimal error handling in the packet transmission and reception logic.
+    Command validation for user input could be more robust to prevent crashes.
+    Lack of comprehensive unit tests and integration tests for the command classes.
+
+3. Development Goals
+
+Immediate goals:
+
+    Improve error handling, particularly for network and packet handling.
+    Validate user input more thoroughly in the CLI to avoid undefined behavior.
+    Refactor networking code to abstract socket management and error checking.
+
+Long-term goals:
+
+    Implement support for additional protocols and layers (e.g., IPv4, TCP).
+    Add remote server capabilities, enabling users to send and receive packets from remote devices.
+    Optimize packet processing for better performance with larger data sets.
+
+4. Project Structure
+
+The project consists of several core components:
+
+    mpp.cpp: Main program that initializes commands, manages the command line interface, and executes user input.
+    mpp.h: Header file defining the interfaces and class declarations for the project, including:
+        Observer: Interface for classes that receive updates (e.g., Logger).
+        Command: Base class for all commands (e.g., TxCommand, RxCommand).
+        Logger: Concrete observer that logs messages to a file and console.
+        NetworkManager: Handles network connections and data transmission.
+        RemoteTxCommand/RemoteRxCommand: Commands for sending and receiving data over the network.
+        CommandManager: Manages the registration and execution of commands.
+
+External dependencies:
+
+    libnet: Used for building and sending Ethernet packets.
+    libpcap: Used for capturing Ethernet packets.
+    PlantUML: Used for generating UML diagrams.
+
+5. Technical Context
+
+Development environment:
+
+    IDE: Visual Studio Code.
+    Compiler: GCC 11.3.
+    Build System: CMake.
+    Target Standard: C++17.
+
+Special configurations:
+
+    The log file is written to /usr/local/mpp/chatgptmpp/vscmpp/mpplog.txt.
+    UML diagrams are generated at /usr/local/mpp/chatgptmpp/vscmpp/mpp_class_diagram.puml.
+
+6. Development Workflow
+
+The development process involves several steps for collaboration:
+
+    Code Generation: You provide descriptions of features or changes you'd like, and I generate the corresponding C++ code for you.
+    Testing in VSCode: You compile and run the code in VSCode, using the PlantUML extension to visualize changes in the UML class diagram.
+    UML Diagram Refinement: After generating the UML diagram via the umlCommand, you make adjustments as needed in the .puml file, refining the class structure to fit the design.
+    Code Adjustment: Once the UML diagram reaches a satisfactory state, you send the .puml file back to me, and I modify the C++ code accordingly.
+    Version Control: All changes are backed up using git to ensure we can roll back or track progress as needed.
+
+This iterative process allows us to continuously improve the project’s structure and functionality, ensuring that the code and UML diagram remain aligned.
+7. Specific Instructions for Me
+
+    Provide complete C++ code with full implementations, no placeholders.
+    Follow modern C++ practices, including RAII, smart pointers, and STL usage.
+    Avoid overcomplicating the design; ensure the code remains extensible and testable.
+    Ensure modularity in all components, adhering to design patterns like Command, Observer, and Factory.
