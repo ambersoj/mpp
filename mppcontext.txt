@@ -1,0 +1,57 @@
+Updated MPP Project Summary (for future session recovery)
+1️⃣ Project Overview: The Modern MPP (Microservice Packet Processor)
+
+MPP is a UNIX-based, microservice-driven, real-time networking framework that:
+✅ Captures and transmits Layer 2 packets using Libpcap & Libnet
+✅ Processes events asynchronously using UNIX sockets for IPC
+✅ Supports modular commands & plugins (dynamic .so execution coming soon)
+✅ Is lightweight, fast, and fully UNIX-native
+
+💡 In UNIX terms:
+📡 Everything in UNIX is a file → Everything in MPP is a microservice
+2️⃣ The MPP Architecture
+
+✅ Each major function runs as a separate process (microservice)
+✅ IPC between components via UNIX domain sockets
+✅ Fully modular – commands, logs, and network processing are independent
+
+💡 Current Core Components:
+Component	Role
+mpp_core	Central command dispatcher, handles IPC & coordination
+mpp_net	Captures and transmits raw Ethernet packets
+mpp_tui	Displays real-time logs & packet events in a virtual terminal
+mpp_logger	Handles system logging across all components
+mpp_cmd	CLI for sending commands (e.g., tx, filter, start, stop)
+
+💡 How they communicate:
+📡 Components bind to UNIX sockets, allowing real-time, low-latency event exchange.
+3️⃣ Features Working Right Now
+
+✅ Live packet capture from any network interface
+✅ Raw Ethernet packet transmission (tx) with custom MACs & payloads
+✅ Fully event-driven architecture – no blocking loops!
+✅ Modular command execution (start, stop, tx works over IPC)
+✅ Simple, UNIX-native, microservice-based architecture
+4️⃣ In Progress / Next Steps
+
+✅ Dynamic DSL (Domain-Specific Language) for real-time network control
+✅ .so plugin execution for custom packet manipulation & automation
+✅ Real-time filtering & packet inspection improvements
+✅ Integrating Tmux-based UI for modular component views
+5️⃣ Key Design Patterns Used
+
+✅ Observer Pattern – Components notify each other asynchronously via IPC
+✅ Command Pattern – mpp_cmd sends structured commands to mpp_core
+✅ Strategy Pattern – Dynamically loading .so plugins for extensibility
+✅ Interpreter Pattern – Planned for DSL execution & automation
+📜 TL;DR: What is MPP Now?
+
+MPP has evolved into a powerful, modular, real-time packet processing system that lets users capture, modify, inject, and analyze network traffic at Layer 2 with a UNIX-native, microservice-driven approach.
+
+💡 Think of it as: 📡 A network engineer’s programmable Linux command center for packets.
+🔥 Why This Summary?
+
+    If you lose this session, just paste this into a new ChatGPT chat and say:
+    "This was our last state of MPP. Let's continue from here."
+    It saves time re-explaining everything
+    It ensures we stay aligned on the architecture & goals
