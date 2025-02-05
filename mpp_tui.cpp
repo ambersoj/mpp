@@ -1,19 +1,22 @@
 /* MPP-TUI */
-
 #include <iostream>
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <unistd.h>
-#include <string.h>
+#include <cstring>
 #include <ncurses.h>
 #include <vector>
 #include <thread>
+#include <algorithm>  // 🔥 Make sure this is included at the top!
+#include <sys/stat.h>
 
 #define CORE_SOCKET "/tmp/mpp_core.sock"
 #define TUI_SOCKET "/tmp/mpp_tui.sock"
+#define LOGGER_SOCKET "/tmp/mpp_logger.sock"
 
-std::vector<std::string> packetHistory;  // 🔥 Stores packet logs
+std::vector<std::string> packetHistory;
 
+void sendToLogger(const std::string& message);
 void startUI();
 void receivePackets();
 void sendToCore(const std::string& message);
@@ -42,6 +45,8 @@ void startServer() {
     }
 
     std::cout << "[TUI] Successfully bound to " << TUI_SOCKET << std::endl;
+    chmod(TUI_SOCKET, 0777);
+    std::cout << "[TUI] Set permissions 777 for " << TUI_SOCKET << std::endl;
     listen(server_sock, 5);
     std::cout << "[TUI] Listening for packets...\n";
 
@@ -70,16 +75,19 @@ void startUI() {
 }
 
 void displayPackets() {
-    int row = 1;  // Start displaying below title
+    clear();
+    mvprintw(0, 0, "TUI Packet Viewer. Press 'q' to quit.");
 
-    // Keep only last N packets (for scrolling effect)
-    int max_rows = LINES - 2;
-    if (packetHistory.size() > max_rows) {
-        packetHistory.erase(packetHistory.begin(), packetHistory.begin() + (packetHistory.size() - max_rows));
-    }
+    int max_rows = LINES - 2;  // 🔥 Prevent overflow
+    int start = (packetHistory.size() > max_rows) ? packetHistory.size() - max_rows : 0;
 
-    for (const auto& packet : packetHistory) {
-        mvprintw(row++, 0, "%s", packet.c_str());  // Append new packets
+    for (int i = 0; i < max_rows && (start + i) < packetHistory.size(); ++i) {
+        std::string cleanLog = packetHistory[start + i];
+
+        // ✅ Correctly remove newline characters using erase-remove idiom
+        cleanLog.erase(std::remove(cleanLog.begin(), cleanLog.end(), '\n'), cleanLog.end());
+
+        mvprintw(i + 1, 0, "%s", cleanLog.c_str());
     }
 
     refresh();
@@ -118,14 +126,33 @@ void receivePackets() {
         char buffer[256] = {0};
         read(client_sock, buffer, sizeof(buffer));
 
-        std::cout << "[TUI] Received Packet: " << buffer << std::endl;  // 🔥 DEBUG
-        packetHistory.push_back(buffer);
-        displayPackets();  // 🔥 Refresh UI
+        std::string message(buffer);
+        if (message == "exit") {  // 🔥 Check if exit command received
+            std::cout << "[TUI] Exiting...\n";
+            sendToLogger("[TUI] Exiting...");
+            endwin();  // 🔥 Exit ncurses properly
+            exit(0);
+        }
+
+        packetHistory.push_back(message);
+        displayPackets();
 
         close(client_sock);
     }
 
     close(server_sock);
+}
+
+void sendToLogger(const std::string& message) {
+    int sock = socket(AF_UNIX, SOCK_STREAM, 0);
+    struct sockaddr_un addr{};
+    addr.sun_family = AF_UNIX;
+    strncpy(addr.sun_path, "/tmp/mpp_logger.sock", sizeof(addr.sun_path) - 1);
+
+    if (connect(sock, (struct sockaddr*)&addr, sizeof(addr)) == 0) {
+        send(sock, message.c_str(), message.size(), 0);
+    }
+    close(sock);
 }
 
 void sendToCore(const std::string& message) {
@@ -144,6 +171,8 @@ void sendToCore(const std::string& message) {
 }
 
 int main() {
+    sendToLogger("[TUI] MPP-TUI started.");
     startServer();
     return 0;
 }
+
