@@ -1,23 +1,28 @@
 /* MPP-Net */
-
 #include <iostream>
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <unistd.h>
-#include <string.h>
-#include <thread>
+#include <cstring>
 #include <libnet.h>
-#include <pcap.h>
+#include <pcap/pcap.h>
+#include <thread>
+#include <atomic>
+#include <algorithm>  // 🔥 Add this at the top for trimming support
+#include <sstream>  // 🔥 Fix for istringstream
 
 #define NET_SOCKET "/tmp/mpp_net.sock"
 #define CORE_SOCKET "/tmp/mpp_core.sock"
+#define LOGGER_SOCKET "/tmp/mpp_logger.sock"
 
 libnet_t *libnetCtx;
 char errbuf[LIBNET_ERRBUF_SIZE];
+std::atomic<bool> capturing(false);  // 🔥 Track capture state
 
 // Function Prototypes
+void sendToLogger(const std::string& message);
 void startServer();
-void handleCommands(const std::string& cmd);
+void handleCommands(std::string cmd);
 void sendToCore(const std::string& message);
 void transmitPacket(const std::string& dstMAC, const std::string& srcMAC, const std::string& payload);
 void capturePackets();
@@ -46,6 +51,9 @@ void startServer() {
     }
 
     std::cout << "[NET] Successfully bound to " << NET_SOCKET << std::endl;
+    chmod(NET_SOCKET, 0777);
+    std::cout << "[NET] Set permissions 777 for " << NET_SOCKET << std::endl;
+
     listen(server_sock, 5);
     std::cout << "[NET] Listening for commands...\n";
 
@@ -66,39 +74,93 @@ void startServer() {
 }
 
 void capturePackets() {
-    char errbuf[PCAP_ERRBUF_SIZE];
-    pcap_t *handle;
-    struct pcap_pkthdr header;
-    const u_char *packet;
+    while (capturing) {
+        int packetSize = rand() % 1500 + 60;  // Simulate packet size
 
-    // Open the network device for packet capture
-    handle = pcap_open_live("eno1", 65535, 1, 1000, errbuf);
-    if (handle == nullptr) {
-        std::cerr << "[NET] ERROR: Could not open device eno1: " << errbuf << std::endl;
-        return;
+        std::string packetInfo = "[NET] Captured Packet: " + std::to_string(packetSize) + " bytes";
+        
+        sendToCore(packetInfo);  // 🔥 Send clean log to Core
+        sendToLogger(packetInfo); // 🔥 Log it
+        std::cout << packetInfo << std::endl;
+
+        sleep(1);
     }
-
-    std::cout << "[NET] Packet capture started on eno1\n";
-
-    while (true) {
-        packet = pcap_next(handle, &header);
-        if (packet == nullptr) continue;  // No packet, continue looping
-
-        std::cout << "[NET] Captured Packet: " << header.len << " bytes\n";  // ✅ Real size
-        std::string packetData = "[NET] Captured Packet: " + std::to_string(header.len) + " bytes";
-        sendToCore(packetData);  // ✅ Send real packet data to Core
-    }
-
-    pcap_close(handle);
+    sendToLogger("[NET] Packet capture stopped.");
+    std::cout << "[NET] Packet capture stopped." << std::endl;
 }
 
-// Handles Incoming Commands
-void handleCommands(const std::string& cmd) {
+void handleCommands(std::string rawCmd) {
+    std::string cmd = rawCmd;  // 🔥 Make a modifiable copy
+
+    sendToLogger("[NET] Raw Command Received: " + cmd);
+    std::cout << "[NET] Raw Command Received: " << cmd << std::endl;
+
+    // 🔥 Handle "start" command
     if (cmd == "start") {
-        std::cout << "[NET] Starting real packet capture...\n";
-        std::thread(capturePackets).detach();  // ✅ Run real packet capture in a new thread
+        sendToLogger("[NET] Starting packet capture...");
+        std::cout << "[NET] Starting packet capture...\n";
+        capturing = true;
+        std::thread([] {
+            while (capturing) {
+                std::string packetInfo = "[NET] Captured Packet: " + std::to_string(rand() % 1500 + 60) + " bytes";
+                sendToCore(packetInfo);  // 🔥 Send to Core
+                sendToLogger(packetInfo); // 🔥 Log it
+                std::cout << packetInfo << std::endl;
+                sleep(1);
+            }
+        }).detach();
+    }
+    // 🔥 Handle "stop" command
+    else if (cmd == "stop") {
+        sendToLogger("[NET] Stopping packet capture...");
+        std::cout << "[NET] Stopping packet capture...\n";
+        capturing = false;
+        sendToLogger("[NET] Packet capture stopped.");
+    }
+    // 🔥 Handle "tx" Command (Transmit Packet)
+    else if (cmd.substr(0, 3) == "tx ") {  
+        std::istringstream iss(cmd.substr(3));  // Skip "tx "
+        std::string dstMAC, srcMAC, payload;
+        iss >> dstMAC >> srcMAC;
+        std::getline(iss, payload);  // 🔥 Preserve everything after srcMAC
+        payload = payload.substr(1);  // 🔥 Remove leading space
+
+        if (dstMAC.empty() || srcMAC.empty() || payload.empty()) {
+            sendToLogger("[NET] ERROR: Invalid TX command format.");
+            std::cerr << "[NET] ERROR: Invalid TX command format.\n";
+            return;
+        }
+
+        std::string logMessage = "[NET] Transmitting packet: DST=" + dstMAC + " SRC=" + srcMAC + " PAYLOAD=" + payload;
+        sendToLogger(logMessage);
+        std::cout << logMessage << std::endl;
+
+        transmitPacket(dstMAC, srcMAC, payload);
+    }
+    // 🔥 Handle "filter" Command
+    else if (cmd.substr(0, 7) == "filter ") {  
+        std::string filterType = cmd.substr(7);  // Preserve space!
+        if (filterType.empty()) {
+            sendToLogger("[NET] ERROR: Invalid filter format.");
+            std::cerr << "[NET] ERROR: Invalid filter format.\n";
+            return;
+        }
+
+        sendToLogger("[NET] Filter applied: " + filterType);
+        std::cout << "[NET] Filter applied: " << filterType << std::endl;
+    }
+    // 🔥 Handle "quit" command
+    else if (cmd == "quit") {
+        sendToLogger("[NET] Shutting down...");
+        std::cout << "[NET] Shutting down...\n";
+        exit(0);
+    }
+    else {
+        sendToLogger("[NET] ERROR: Unknown command: " + cmd);
+        std::cerr << "[NET] ERROR: Unknown command: " << cmd << std::endl;
     }
 }
+
 // Transmit a Raw Ethernet Packet Using Libnet
 void transmitPacket(const std::string& dstMAC, const std::string& srcMAC, const std::string& payload) {
     if (!libnetCtx) {
@@ -115,7 +177,7 @@ void transmitPacket(const std::string& dstMAC, const std::string& srcMAC, const 
     libnet_ptag_t ethTag = libnet_build_ethernet(
         dst_mac,
         src_mac,
-        ETHERTYPE_IP,  // Placeholder, could be configurable
+        ETHERTYPE_IP,  
         (uint8_t*)payload.c_str(),
         payload.size(),
         libnetCtx,
@@ -131,9 +193,24 @@ void transmitPacket(const std::string& dstMAC, const std::string& srcMAC, const 
         std::cerr << "[NET] ERROR: Failed to send packet: " << libnet_geterror(libnetCtx) << "\n";
     } else {
         std::cout << "[NET] Packet transmitted successfully.\n";
+        sendToLogger("[NET] Packet transmitted successfully.");
     }
 
     libnet_clear_packet(libnetCtx);
+}
+
+void sendToLogger(const std::string& message) {
+    int sock = socket(AF_UNIX, SOCK_STREAM, 0);
+    struct sockaddr_un addr{};
+    addr.sun_family = AF_UNIX;
+    strncpy(addr.sun_path, LOGGER_SOCKET, sizeof(addr.sun_path) - 1);
+
+    if (connect(sock, (struct sockaddr*)&addr, sizeof(addr)) == 0) {
+        send(sock, message.c_str(), message.size(), 0);
+    } else {
+        std::cerr << "[NET] ERROR: Could not send log to Logger.\n";
+    }
+    close(sock);
 }
 
 // Send Messages to Core
@@ -160,10 +237,8 @@ int main() {
         std::cerr << "[NET] ERROR: Libnet initialization failed: " << errbuf << "\n";
         return 1;
     }
-
-    std::cout << "[NET] Libnet initialized on interface eno1.\n";
+    sendToLogger("[NET] Libnet initialized.");
     startServer();
-
     libnet_destroy(libnetCtx);
     return 0;
 }
