@@ -92,9 +92,6 @@ void capturePackets() {
 void handleCommands(std::string rawCmd) {
     std::string cmd = rawCmd;  // 🔥 Make a modifiable copy
 
-    sendToLogger("[NET] Raw Command Received: " + cmd);
-    std::cout << "[NET] Raw Command Received: " << cmd << std::endl;
-
     // 🔥 Handle "start" command
     if (cmd == "start") {
         sendToLogger("[NET] Starting packet capture...");

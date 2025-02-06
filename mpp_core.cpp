@@ -9,12 +9,19 @@
 #include <sys/stat.h>
 #include <ctime>  // For uptime calculation
 #include <sstream>
+#include <string>
+#include <vector>
+#include <cstdlib>
+#include <arpa/inet.h>
+#include <algorithm>
 
 #define CMD_SOCKET "/tmp/mpp_cmd.sock"
 #define NET_SOCKET "/tmp/mpp_net.sock"
 #define CORE_SOCKET "/tmp/mpp_core.sock"
 #define TUI_SOCKET "/tmp/mpp_tui.sock"
 #define LOGGER_SOCKET "/tmp/mpp_logger.sock"
+#define REMOTE_PORT 5000  // 🔥 Changeable in config later
+#define MAX_CLIENTS 5
 
 // 🔥 Global Statistics
 static int packets_captured = 0;
@@ -31,6 +38,99 @@ void receivePackets();
 void receiveCoreConnections();
 void sendToTUI(const std::string& message);
 void sendToCmd(const std::string& message);
+void startRemoteListener();
+std::string handleRemoteCommand(const std::string& cmd);
+
+std::string handleRemoteCommand(const std::string& cmd) {
+    std::ostringstream response;
+
+    if (cmd == "start") {
+        sendToNet("start");
+        response << "[CORE] Starting packet capture...\n";
+    } 
+    else if (cmd == "stop") {
+        sendToNet("stop");
+        response << "[CORE] Stopping packet capture...\n";
+    } 
+    else if (cmd == "stats") {
+        time_t now = time(nullptr);
+        int uptime_sec = static_cast<int>(difftime(now, start_time));
+
+        response << "[CORE] Packets Captured: " << packets_captured << "\n";
+        response << "[CORE] Packets Transmitted: " << packets_transmitted << "\n";
+        response << "[CORE] Errors: " << errors << "\n";
+        response << "[CORE] Uptime: " << (uptime_sec / 3600) << "h "
+                 << ((uptime_sec % 3600) / 60) << "m "
+                 << (uptime_sec % 60) << "s\n";
+    }
+    else if (cmd.find("tx ") == 0) {
+        sendToNet(cmd);
+        response << "[CORE] Forwarding TX command to NET...\n";
+    }
+    else if (cmd.find("filter ") == 0) {
+        sendToNet(cmd);
+        response << "[CORE] Forwarding filter command to NET...\n";
+    }
+    else {
+        response << "[CORE] ERROR: Unknown command: " << cmd << "\n";
+    }
+
+    return response.str();
+}
+
+void startRemoteListener() {
+    int server_sock, client_sock;
+    struct sockaddr_in server_addr, client_addr;
+    socklen_t client_len = sizeof(client_addr);
+
+    server_sock = socket(AF_INET, SOCK_STREAM, 0);
+    if (server_sock < 0) {
+        std::cerr << "[CORE] ERROR: Failed to create remote socket\n";
+        return;
+    }
+
+    int opt = 1;
+    setsockopt(server_sock, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
+
+    server_addr.sin_family = AF_INET;
+    server_addr.sin_addr.s_addr = INADDR_ANY;
+    server_addr.sin_port = htons(5000);
+
+    if (bind(server_sock, (struct sockaddr*)&server_addr, sizeof(server_addr)) < 0) {
+        std::cerr << "[CORE] ERROR: Failed to bind remote listener\n";
+        close(server_sock);
+        return;
+    }
+
+    listen(server_sock, 5);
+    std::cout << "[CORE] Remote Listener started on port 5000\n";
+
+    while (true) {
+        client_sock = accept(server_sock, (struct sockaddr*)&client_addr, &client_len);
+        if (client_sock < 0) {
+            std::cerr << "[CORE] ERROR: Failed to accept remote connection\n";
+            continue;
+        }
+
+        char buffer[512] = {0};
+        ssize_t bytes_received = recv(client_sock, buffer, sizeof(buffer) - 1, 0);
+        if (bytes_received > 0) {
+            buffer[bytes_received] = '\0';
+            std::string command(buffer);
+            command.erase(std::remove(command.begin(), command.end(), '\n'), command.end());
+
+            std::cout << "[CORE] Remote Command Received: " << command << "\n";
+            
+            // 🔥 Send the command to `handleCommand` for processing
+            std::string response = handleRemoteCommand(command);
+
+            // 🔥 Send back response to remote client
+            send(client_sock, response.c_str(), response.size(), 0);
+        }
+
+        close(client_sock);
+    }
+}
 
 void sendToNet(const std::string& message) {
     int sock = socket(AF_UNIX, SOCK_STREAM, 0);
@@ -167,9 +267,6 @@ void receiveCommands() {
 
 void handleCommand(int client_sock, const std::string& cmd) {
     std::string response;
-    
-    std::cout << "[CORE] Received command: " << cmd << std::endl; // 🔥 Debugging
-    std::cout << "[CORE] DEBUG: Received raw command: " << cmd << std::endl;
 
     if (cmd == "start") {
         response = "[CORE] Starting packet capture...\n";
@@ -180,8 +277,6 @@ void handleCommand(int client_sock, const std::string& cmd) {
         sendToNet("stop");
     } 
     else if (cmd == "stats") {
-        std::cout << "[CORE] Processing stats request...\n"; // 🔥 Debugging
-
         time_t now = time(nullptr);
         int uptime_sec = static_cast<int>(difftime(now, start_time));
 
@@ -189,55 +284,28 @@ void handleCommand(int client_sock, const std::string& cmd) {
         stats << "[CORE] Packets Captured: " << packets_captured << "\n";
         stats << "[CORE] Packets Transmitted: " << packets_transmitted << "\n";
         stats << "[CORE] Errors: " << errors << "\n";
-        stats << "[CORE] Uptime: " << (uptime_sec / 3600) << "h " << ((uptime_sec % 3600) / 60) << "m " << (uptime_sec % 60) << "s\n";
+        stats << "[CORE] Uptime: " << (uptime_sec / 3600) << "h " 
+              << ((uptime_sec % 3600) / 60) << "m " 
+              << (uptime_sec % 60) << "s\n";
 
         response = stats.str();
-
-
-
-
-//        sendToCmd("[CORE] STATS_RESPONSE:\n" + response);
-
-
-send(client_sock, response.c_str(), response.size(), 0);
-return;  // 🔥 Prevent further command processing
-
-
-
-
-
-        std::cout << "[CORE] Sent stats response to CMD:\n" << response << std::endl; // 🔥 Debugging
+        sendToCmd(response); 
     }
-    else if (cmd.find("tx ") == 0) {  // 🔥 Forward TX Commands to NET
+    else if (cmd.find("tx ") == 0) {
         response = "[CORE] Forwarding TX command to NET...\n";
         sendToNet(cmd);
     } 
-    else if (cmd.find("filter ") == 0) {  // 🔥 Forward Filter Commands to NET
+    else if (cmd.find("filter ") == 0) {
         response = "[CORE] Forwarding filter command to NET...\n";
         sendToNet(cmd);
     } 
-    else if (cmd == "shutdown") {
-        response = "[CORE] Shutting down all components...\n";
-
-        // 🔥 Notify CMD first
-        sendToCmd("shutdown");
-        sleep(1);
-
-        // 🔥 Notify NET & TUI
-        sendToNet("quit");
-        sendToTUI("exit");
-
-        send(client_sock, response.c_str(), response.size(), 0);
-        std::cout << "[CORE] Exiting...\n";
-        sendToLogger("[CORE] Exiting...");
-        exit(0);
-    } 
     else {
-        response = "[CORE] Unknown command: " + cmd + "\n";
+        response = "[CORE] ERROR: Unknown command: " + cmd + "\n";
     }
 
     send(client_sock, response.c_str(), response.size(), 0);
 }
+
 
 void receivePackets() {
     while (capturing) {
@@ -307,6 +375,9 @@ int main() {
     sendToLogger("[CORE] MPP-Core is starting...");
     std::thread cmdThread(receiveCommands);
     std::thread netThread(receiveCoreConnections);
+    std::thread remoteThread(startRemoteListener);
+    remoteThread.detach();  // Run in the background
+
     cmdThread.join();
     netThread.join();
     return 0;
