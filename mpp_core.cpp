@@ -7,6 +7,8 @@
 #include <thread>
 #include <atomic>
 #include <sys/stat.h>
+#include <ctime>  // For uptime calculation
+#include <sstream>
 
 #define CMD_SOCKET "/tmp/mpp_cmd.sock"
 #define NET_SOCKET "/tmp/mpp_net.sock"
@@ -14,6 +16,11 @@
 #define TUI_SOCKET "/tmp/mpp_tui.sock"
 #define LOGGER_SOCKET "/tmp/mpp_logger.sock"
 
+// 🔥 Global Statistics
+static int packets_captured = 0;
+static int packets_transmitted = 0;
+static int errors = 0;
+static time_t start_time = time(nullptr);  // Track when core starts
 
 std::atomic<bool> capturing(false);
 
@@ -42,20 +49,29 @@ void sendToNet(const std::string& message) {
     close(sock);
 }
 
-void sendToCmd(const std::string& message) {
+void sendToCmd(const std::string& response) {
     int sock = socket(AF_UNIX, SOCK_STREAM, 0);
+    if (sock < 0) {
+        std::cerr << "[CORE] ERROR: Unable to create socket for CMD: " << strerror(errno) << std::endl;
+        return;
+    }
+
     struct sockaddr_un addr{};
     addr.sun_family = AF_UNIX;
     strncpy(addr.sun_path, CMD_SOCKET, sizeof(addr.sun_path) - 1);
 
-    if (connect(sock, (struct sockaddr*)&addr, sizeof(addr)) == 0) {
-        send(sock, message.c_str(), message.size(), 0);
-        std::cout << "[CORE] Sent to CMD: " << message << std::endl;
-        sendToLogger("[CORE] Sent to CMD: " + message);
-    } else {
-        std::cerr << "[CORE] ERROR: Could not connect to CMD.\n";
-        sendToLogger("[CORE] ERROR: Could not connect to CMD.");
+    if (connect(sock, (struct sockaddr*)&addr, sizeof(addr)) < 0) {
+        std::cerr << "[CORE] ERROR: Unable to connect to CMD: " << strerror(errno) << std::endl;
+        close(sock);
+        return;
     }
+
+    // 🔥 Send entire response (with newline termination)
+    std::string formatted_response = response + "\n";
+    if (send(sock, formatted_response.c_str(), formatted_response.size(), 0) == -1) {
+        std::cerr << "[CORE] ERROR: Failed to send response to CMD: " << strerror(errno) << std::endl;
+    }
+
     close(sock);
 }
 
@@ -152,6 +168,9 @@ void receiveCommands() {
 void handleCommand(int client_sock, const std::string& cmd) {
     std::string response;
     
+    std::cout << "[CORE] Received command: " << cmd << std::endl; // 🔥 Debugging
+    std::cout << "[CORE] DEBUG: Received raw command: " << cmd << std::endl;
+
     if (cmd == "start") {
         response = "[CORE] Starting packet capture...\n";
         sendToNet("start");
@@ -160,6 +179,35 @@ void handleCommand(int client_sock, const std::string& cmd) {
         response = "[CORE] Stopping packet capture...\n";
         sendToNet("stop");
     } 
+    else if (cmd == "stats") {
+        std::cout << "[CORE] Processing stats request...\n"; // 🔥 Debugging
+
+        time_t now = time(nullptr);
+        int uptime_sec = static_cast<int>(difftime(now, start_time));
+
+        std::ostringstream stats;
+        stats << "[CORE] Packets Captured: " << packets_captured << "\n";
+        stats << "[CORE] Packets Transmitted: " << packets_transmitted << "\n";
+        stats << "[CORE] Errors: " << errors << "\n";
+        stats << "[CORE] Uptime: " << (uptime_sec / 3600) << "h " << ((uptime_sec % 3600) / 60) << "m " << (uptime_sec % 60) << "s\n";
+
+        response = stats.str();
+
+
+
+
+//        sendToCmd("[CORE] STATS_RESPONSE:\n" + response);
+
+
+send(client_sock, response.c_str(), response.size(), 0);
+return;  // 🔥 Prevent further command processing
+
+
+
+
+
+        std::cout << "[CORE] Sent stats response to CMD:\n" << response << std::endl; // 🔥 Debugging
+    }
     else if (cmd.find("tx ") == 0) {  // 🔥 Forward TX Commands to NET
         response = "[CORE] Forwarding TX command to NET...\n";
         sendToNet(cmd);
@@ -171,9 +219,9 @@ void handleCommand(int client_sock, const std::string& cmd) {
     else if (cmd == "shutdown") {
         response = "[CORE] Shutting down all components...\n";
 
-        // 🔥 Notify CMD first (Fixes "Bad file descriptor" issue)
+        // 🔥 Notify CMD first
         sendToCmd("shutdown");
-        sleep(1); // 🔥 Allow time for CMD to exit
+        sleep(1);
 
         // 🔥 Notify NET & TUI
         sendToNet("quit");
